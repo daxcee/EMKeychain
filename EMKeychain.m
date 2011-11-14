@@ -49,7 +49,7 @@ static BOOL _logErrors;
 		NSLog(@"%@", errorText);
 		NSMutableDictionary *errorDetail = [NSMutableDictionary dictionary];
 		[errorDetail setValue: errorText forKey:NSLocalizedDescriptionKey];
-		*error = [NSError errorWithDomain:@"EMKeychainErrorDomain" code:returnStatus userInfo:errorDetail];
+		if (error) *error = [NSError errorWithDomain:@"EMKeychainErrorDomain" code:returnStatus userInfo:errorDetail];
 		return NO;
 	} else {
 		return YES;
@@ -82,17 +82,15 @@ static BOOL _logErrors;
 		return NO;
 	
 	[self willChangeValueForKey:@"password"];
-	[myPassword autorelease];
 	myPassword = [newPasswordString copy];
 	[self didChangeValueForKey:@"password"];
 	
 	const char *newPassword = [newPasswordString UTF8String];
-	OSStatus returnStatus = SecKeychainItemModifyAttributesAndData(coreKeychainItem, NULL, strlen(newPassword), (void *)newPassword);
+	OSStatus returnStatus = SecKeychainItemModifyAttributesAndData(coreKeychainItem, NULL, (UInt32)strlen(newPassword), (void *)newPassword);
 	return (returnStatus == noErr);	
 }
 - (BOOL)setUsername:(NSString *)newUsername {
 	[self willChangeValueForKey:@"username"];
-	[myUsername autorelease];
 	myUsername = [newUsername copy];
 	[self didChangeValueForKey:@"username"];	
 	
@@ -100,7 +98,6 @@ static BOOL _logErrors;
 }
 - (BOOL)setLabel:(NSString *)newLabel {
 	[self willChangeValueForKey:@"label"];
-	[myLabel autorelease];
 	myLabel = [newLabel copy];
 	[self didChangeValueForKey:@"label"];
 	
@@ -108,11 +105,6 @@ static BOOL _logErrors;
 }
 - (void)dealloc {
 	if (coreKeychainItem) CFRelease(coreKeychainItem);
-	[myPassword release];
-	[myUsername release];
-	[myLabel release];
-	
-	[super dealloc];
 }
 @end
 
@@ -121,7 +113,7 @@ static BOOL _logErrors;
 	const char *newValue = [newStringValue UTF8String];
 	SecKeychainAttribute attributes[1];
 	attributes[0].tag = attributeTag;
-	attributes[0].length = strlen(newValue);
+	attributes[0].length = (UInt32)strlen(newValue);
 	attributes[0].data = (void *)newValue;
 	
 	SecKeychainAttributeList list;
@@ -172,7 +164,7 @@ static BOOL _logErrors;
 		}
 		return [NSNumber numberWithUnsignedInt:int4];
 	} else {
-		attrString = [[[NSString alloc] initWithBytes:list.attr[0].data length:list.attr[0].length encoding: NSUTF8StringEncoding] autorelease];
+		attrString = [[NSString alloc] initWithBytes:list.attr[0].data length:list.attr[0].length encoding: NSUTF8StringEncoding];
 	}
 
 	SecKeychainItemFreeContent(&list, NULL);
@@ -184,10 +176,10 @@ static BOOL _logErrors;
 
 + (EMGenericKeychainItem *)genericKeychainItemForService:(NSString *)serviceNameString withUsername:(NSString *)usernameString {
 	const char *serviceName  = serviceNameString == nil ? "" : [serviceNameString UTF8String];
-	UInt32 serviceNameLength = serviceNameString == nil ? 0  : strlen(serviceName);
+	UInt32 serviceNameLength = serviceNameString == nil ? 0  : (UInt32)strlen(serviceName);
 
 	const char *username  = usernameString == nil ? "" : [usernameString UTF8String];
-	UInt32 usernameLength = usernameString == nil ? 0  : strlen(username);
+	UInt32 usernameLength = usernameString == nil ? 0  : (UInt32)strlen(username);
 	
 	UInt32 passwordLength = 0;
 	char *password = nil;
@@ -200,7 +192,7 @@ static BOOL _logErrors;
 		}
 		return nil;
 	}
-	NSString *passwordString = [[[NSString alloc] initWithBytes:password length:passwordLength encoding: NSUTF8StringEncoding] autorelease];
+	NSString *passwordString = [[NSString alloc] initWithBytes:password length:passwordLength encoding: NSUTF8StringEncoding];
 	SecKeychainItemFreeContent(NULL, password);
 
 	usernameString = [self getKeychainAttribute:kSecAccountItemAttr fromItem: item];
@@ -218,7 +210,7 @@ static BOOL _logErrors;
 	const char *password = [passwordString UTF8String];
 	
 	SecKeychainItemRef item = nil;
-	OSStatus returnStatus = SecKeychainAddGenericPassword(NULL, strlen(serviceName), serviceName, strlen(username), username, strlen(password), (void *)password, &item);
+	OSStatus returnStatus = SecKeychainAddGenericPassword(NULL, (UInt32)strlen(serviceName), serviceName, (UInt32)strlen(username), username, (UInt32)strlen(password), (void *)password, &item);
 	
 	if (returnStatus != noErr || !item) {
 		NSLog(@"Error (%@) - %s", NSStringFromSelector(_cmd), GetMacOSStatusErrorString(returnStatus));
@@ -246,7 +238,7 @@ static BOOL _logErrors;
 	return self;
 }
 + (id)genericKeychainItem:(SecKeychainItemRef)item forServiceName:(NSString *)serviceName username:(NSString *)username password:(NSString *)password {
-	return [[[EMGenericKeychainItem alloc] initWithCoreKeychainItem:item serviceName:serviceName username:username password:password] autorelease];
+	return [[EMGenericKeychainItem alloc] initWithCoreKeychainItem:item serviceName:serviceName username:username password:password];
 }
 - (NSString *)serviceName {
 	return myServiceName;
@@ -254,15 +246,10 @@ static BOOL _logErrors;
 
 - (BOOL)setServiceName:(NSString *)newServiceName {
 	[self willChangeValueForKey:@"serviceName"];
-	[myServiceName autorelease];
 	myServiceName = [newServiceName copy];
 	[self didChangeValueForKey:@"serviceName"];	
 	
 	return [self modifyAttributeWithTag:kSecServiceItemAttr toBeString:newServiceName];
-}
-- (void)dealloc {
-	[myServiceName release];
-	[super dealloc];
 }
 @end
 
@@ -270,24 +257,19 @@ static BOOL _logErrors;
 + (EMInternetKeychainItem *)internetKeychainItemForServer:(NSString *)serverString withUsername:(NSString *)usernameString path:(NSString *)pathString port:(int)port protocol:(SecProtocolType)protocol {
 	
 	const char *server  = serverString == nil ? "" : [serverString UTF8String];
-	UInt32 serverLength = serverString == nil ? 0 : strlen(server);
-
 	const char *username  = usernameString == nil ? "" : [usernameString UTF8String];
-	UInt32 usernameLength = usernameString == nil ? 0 : strlen(username);
-	
 	const char *path  = pathString == nil ? "" : [pathString UTF8String];
-	UInt32 pathLength = pathString == nil ? 0 : strlen(path);
 	
 	char *password = nil;
 	UInt32 passwordLength = 0;
 	
 	SecKeychainItemRef item = nil;
-	OSStatus returnStatus = SecKeychainFindInternetPassword(NULL, strlen(server), server, 0, NULL, strlen(username), username, strlen(path), path, port, protocol, kSecAuthenticationTypeAny, &passwordLength, (void **)&password, &item);
+	OSStatus returnStatus = SecKeychainFindInternetPassword(NULL, (UInt32)strlen(server), server, 0, NULL, (UInt32)strlen(username), username, (UInt32)strlen(path), path, port, protocol, kSecAuthenticationTypeAny, &passwordLength, (void **)&password, &item);
 	
 	if (returnStatus != noErr && protocol == kSecProtocolTypeFTP) {
 		//Some clients (like Transmit) still save passwords with kSecProtocolTypeFTPAccount, which was deprecated.  Let's check for that.
 		protocol = kSecProtocolTypeFTPAccount;		
-		returnStatus = SecKeychainFindInternetPassword(NULL, strlen(server), server, 0, NULL, strlen(username), username, strlen(path), path, port, protocol, 0, &passwordLength, (void **)&password, &item);
+		returnStatus = SecKeychainFindInternetPassword(NULL, (UInt32)strlen(server), server, 0, NULL, (UInt32)strlen(username), username, (UInt32)strlen(path), path, port, protocol, 0, &passwordLength, (void **)&password, &item);
 	}
 	
 	if (returnStatus != noErr || !item) {
@@ -296,7 +278,7 @@ static BOOL _logErrors;
 		}
 		return nil;
 	}
-	NSString *passwordString = [[[NSString alloc] initWithBytes:password length:passwordLength encoding: NSUTF8StringEncoding] autorelease];
+	NSString *passwordString = [[NSString alloc] initWithBytes:password length:passwordLength encoding: NSUTF8StringEncoding];
 	SecKeychainItemFreeContent(NULL, password);
 
 	usernameString = [self getKeychainAttribute:kSecAccountItemAttr fromItem: item];
@@ -320,7 +302,7 @@ static BOOL _logErrors;
 		path = "";
 	
 	SecKeychainItemRef item = nil;
-	OSStatus returnStatus = SecKeychainAddInternetPassword(NULL, strlen(server), server, 0, NULL, strlen(username), username, strlen(path), path, port, protocol, kSecAuthenticationTypeDefault, strlen(password), (void *)password, &item);
+	OSStatus returnStatus = SecKeychainAddInternetPassword(NULL, (UInt32)strlen(server), server, 0, NULL, (UInt32)strlen(username), username, (UInt32)strlen(path), path, port, protocol, kSecAuthenticationTypeDefault, (UInt32)strlen(password), (void *)password, &item);
 	
 	if (returnStatus != noErr || !item) {
 		NSLog(@"Error (%@) - %s", NSStringFromSelector(_cmd), GetMacOSStatusErrorString(returnStatus));
@@ -339,7 +321,7 @@ static BOOL _logErrors;
 	return self;
 }
 + (id)internetKeychainItem:(SecKeychainItemRef)item forServer:(NSString *)server username:(NSString *)username password:(NSString *)password path:(NSString *)path port:(int)port protocol:(SecProtocolType)protocol {
-	return [[[EMInternetKeychainItem alloc] initWithCoreKeychainItem:item server:server username:username password:password path:path port:port protocol:protocol] autorelease];
+	return [[EMInternetKeychainItem alloc] initWithCoreKeychainItem:item server:server username:username password:password path:path port:port protocol:protocol];
 }
 - (NSString *)server {
 	return myServer;
@@ -356,7 +338,6 @@ static BOOL _logErrors;
 
 - (BOOL)setServer:(NSString *)newServer {
 	[self willChangeValueForKey:@"server"];
-	[myServer autorelease];
 	myServer = [newServer copy];	
 	[self didChangeValueForKey:@"server"];
 	
@@ -364,7 +345,6 @@ static BOOL _logErrors;
 }
 - (BOOL)setPath:(NSString *)newPath {
 	[self willChangeValueForKey:@"path"];
-	[myPath autorelease];
 	myPath = [newPath copy];
 	[self didChangeValueForKey:@"path"];
 	
@@ -393,10 +373,5 @@ static BOOL _logErrors;
 	
 	OSStatus returnStatus = SecKeychainItemModifyAttributesAndData(coreKeychainItem, &list, 0, NULL);
 	return (returnStatus == noErr);
-}
-- (void)dealloc {
-	[myServer release];
-	[myPath release];
-	[super dealloc];
 }
 @end
